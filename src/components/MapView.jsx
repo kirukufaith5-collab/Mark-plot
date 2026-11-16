@@ -42,7 +42,50 @@ export default function MapView({ plotKey, field, items, placing, onFieldChange,
     map.on(L.Draw.Event.DELETED, () => latest.current.onFieldChange(null));
     map.on('click', (e) => { if (latest.current.placing) latest.current.onPlace(e.latlng); });
 
-    return () => map.remove();
+    // GPS button: click to start following your location, click again to stop
+    let watching = false;
+    let dot = null;
+    let ring = null;
+
+    const gps = L.control({ position: 'topleft' });
+    gps.onAdd = () => {
+      const btn = L.DomUtil.create('button', 'gps-btn');
+      btn.type = 'button';
+      btn.textContent = '📍 Find me';
+      L.DomEvent.disableClickPropagation(btn);
+      btn.onclick = () => {
+        if (watching) {
+          // Stop following and remove the blue dot
+          map.stopLocate();
+          watching = false;
+          btn.textContent = '📍 Find me';
+          if (dot) { map.removeLayer(dot); map.removeLayer(ring); dot = null; ring = null; }
+        } else {
+          map.locate({ watch: true, setView: false, enableHighAccuracy: true });
+          watching = true;
+          btn.textContent = '⏹ Stop';
+        }
+      };
+      return btn;
+    };
+    gps.addTo(map);
+
+    // Runs each time the phone or laptop reports a new position
+    map.on('locationfound', (e) => {
+      if (!dot) {
+        ring = L.circle(e.latlng, { radius: e.accuracy, color: '#1976d2', weight: 1, fillOpacity: 0.1, interactive: false }).addTo(map);
+        dot = L.circleMarker(e.latlng, { radius: 8, color: '#fff', weight: 2, fillColor: '#1976d2', fillOpacity: 1, interactive: false }).addTo(map);
+        map.setView(e.latlng, 19); // zoom to you the first time only
+      } else {
+        dot.setLatLng(e.latlng);
+        ring.setLatLng(e.latlng);
+        ring.setRadius(e.accuracy);
+      }
+    });
+
+    map.on('locationerror', () => alert('Could not find your location. Please allow location access in your browser.'));
+
+    return () => { map.stopLocate(); map.remove(); };
   }, []);
 
   // 2) Draw the field whenever it changes
